@@ -156,7 +156,8 @@ async def stream_mistral(messages: list[dict]) -> AsyncGenerator[str, None]:
     client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
     full_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
 
-    async for chunk in client.chat.stream_async(model=MODEL, messages=full_messages, max_tokens=2048):
+    stream = await client.chat.stream_async(model=MODEL, messages=full_messages, max_tokens=2048)
+    async for chunk in stream:
         delta = chunk.data.choices[0].delta.content
         if delta:
             yield delta
