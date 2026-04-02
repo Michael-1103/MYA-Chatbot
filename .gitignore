@@ -1,0 +1,5 @@
+.env
+data/destinations.json
+data/session_cookies.json
+__pycache__/
+*.pyc

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MYA — Échanges Internationaux</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ── Sidebar ─────────────────────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <span class="logo-icon">✦</span>
+      <span class="logo-text">MYA</span>
+    </div>
+    <p class="logo-sub">Échanges Internationaux</p>
+  </div>
+
+  <button class="new-chat-btn" id="newChatBtn">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Nouvelle conversation
+  </button>
+
+  <div class="sidebar-section">
+    <span class="sidebar-label">Modèle</span>
+    <div class="model-badge" id="modelBadge">—</div>
+  </div>
+
+  <div class="sidebar-section">
+    <span class="sidebar-label">Données</span>
+    <div class="data-status" id="dataStatus">
+      <span class="dot dot-loading"></span>
+      <span id="dataText">Chargement…</span>
+    </div>
+    <button class="reload-btn" id="reloadBtn" title="Recharger les données">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      Recharger
+    </button>
+  </div>
+
+  <div class="sidebar-hints">
+    <p class="sidebar-label">Suggestions</p>
+    <button class="hint-btn" data-msg="Quelles destinations anglophones sont disponibles ?">Destinations anglophones</button>
+    <button class="hint-btn" data-msg="Compare les universités en Asie disponibles">Universités en Asie</button>
+    <button class="hint-btn" data-msg="Quelles destinations ont le plus de places ?">Plus de places disponibles</button>
+    <button class="hint-btn" data-msg="Conseils pour un échange en Amérique du Nord">Échange en Amérique du Nord</button>
+    <button class="hint-btn" data-msg="Quels documents faut-il préparer pour un échange ?">Préparer son dossier</button>
+  </div>
+</aside>
+
+<!-- ── Main ────────────────────────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- Header mobile -->
+  <header class="mobile-header">
+    <button class="menu-toggle" id="menuToggle">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <div class="logo mobile">
+      <span class="logo-icon">✦</span>
+      <span class="logo-text">MYA</span>
+    </div>
+  </header>
+
+  <!-- Zone de messages -->
+  <div class="messages-container" id="messagesContainer">
+
+    <!-- Écran d'accueil -->
+    <div class="welcome" id="welcomeScreen">
+      <div class="welcome-logo">
+        <span class="logo-icon large">✦</span>
+      </div>
+      <h1>Bonjour, je suis MYA</h1>
+      <p>Ton assistant pour explorer les programmes d'échange internationaux d'Epitech. Pose-moi des questions sur les destinations, les universités partenaires, ou les démarches à suivre.</p>
+    </div>
+
+  </div>
+
+  <!-- Zone de saisie -->
+  <div class="input-area">
+    <div class="input-wrapper">
+      <textarea
+        id="messageInput"
+        placeholder="Pose ta question sur les échanges internationaux…"
+        rows="1"
+        autocomplete="off"
+      ></textarea>
+      <button class="send-btn" id="sendBtn" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+    <p class="disclaimer">MYA peut faire des erreurs. Vérifie les informations importantes.</p>
+  </div>
+
+</main>
+
+<!-- Overlay mobile -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

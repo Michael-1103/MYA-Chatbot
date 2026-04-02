@@ -1,0 +1,24 @@
+services:
+
+  # ── Scraper ─────────────────────────────────────────────────────────────────
+  scraper:
+    build: .
+    container_name: mya-scraper
+    command: python scraper.py
+    volumes:
+      - ./data:/app/data
+    profiles: ["scraper"]
+
+  # ── Interface web ────────────────────────────────────────────────────────────
+  web:
+    build: .
+    container_name: mya-web
+    command: uvicorn server:app --host 0.0.0.0 --port 8080 --reload
+    env_file: .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./server.py:/app/server.py        # hot-reload server
+      - ./frontend:/app/frontend          # hot-reload frontend
+    profiles: ["web"]
