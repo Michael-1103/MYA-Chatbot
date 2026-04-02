@@ -33,7 +33,7 @@ Le tout tourne dans Docker, et tu peux choisir librement entre Claude (Anthropic
 | Docker Compose | v2 | `docker compose version` |
 | Clé API | au moins une (Claude, OpenAI ou Mistral) | — |
 
-Le scraper tourne en arrière-plan (headless), aucun affichage requis. Pour déboguer, tu peux lancer `make scrape-visible` qui ouvre un vrai navigateur sur ton écran.
+Le scraper appelle directement l'API publique du site — aucun navigateur, aucun affichage requis.
 
 ---
 
@@ -76,15 +76,10 @@ make scrape
 
 Ce que ça fait :
 
-1. Un navigateur Chromium headless navigue sur `epitech.globalcampus.app/programs/`
-2. Il parcourt toutes les pages de destinations (pagination automatique)
-3. Les données sont sauvegardées dans `data/destinations.json`
-
-Pour déboguer (navigateur visible) :
-
-```bash
-make scrape-visible
-```
+1. Appelle l'API publique `epitech.campuscommunity.app/api/v2/public/programs` avec pagination
+2. Récupère les 143 destinations sur 6 pages
+3. Extrait les données structurées (pays, langue, places, spécialisations…) directement depuis le JSON
+4. Sauvegarde dans `data/destinations.json`
 
 ### Ce que le scraper collecte
 
@@ -97,28 +92,20 @@ Pour chaque destination, il tente d'extraire :
 | `city` | Ville |
 | `language` | Langue d'enseignement |
 | `spots` | Nombre de places disponibles |
-| `duration` | Durée du séjour |
-| `level` | Niveau requis |
-| `semester` | Semestre(s) concerné(s) |
-| `full_text` | Texte complet de la page (jusqu'à 8 000 caractères) |
-| `tables` | Tableaux HTML présents sur la page |
-| `images` | URLs des images (jusqu'à 10) |
+| `duration` | Durée (`Semester` / `Academic Year`) |
+| `program_type` | Type (`Erasmus+`, `Fee-Paying`, `All Other Programs`) |
+| `specializations` | Liste de spécialisations |
+| `gpa_requirement` | GPA requis |
+| `language_test_required` | Test de langue obligatoire |
+| `dual_degree` | Double diplôme proposé |
+| `price_cents` | Prix en centimes (0 = gratuit) |
+| `full_text` | Description + itinéraire (jusqu'à 10 000 caractères) |
 | `url` | URL de la page source |
 | `scraped_at` | Horodatage du scraping |
 
 ### Stratégie de scraping
 
-
-
-Le scraper utilise deux approches en parallèle pour maximiser la collecte :
-
-**1. Interception réseau (prioritaire)**
-Avant de parser le DOM, le scraper écoute toutes les réponses HTTP de la page. Quand l'application SvelteKit fait des appels JSON vers son API backend, ces réponses sont capturées directement — c'est la méthode la plus fiable et la plus structurée.
-
-**2. Crawl DOM (fallback)**
-Si aucun appel API utile n'est intercepté, le scraper cherche tous les liens `<a href>` pointant vers des pages de destinations individuelles, puis visite chacune d'elles en extrayant le contenu textuel et les tableaux.
-
-Le scraper fait aussi défiler la page (10 fois `End`) pour déclencher le chargement différé (lazy loading).
+Le scraper appelle directement l'API REST publique `epitech.campuscommunity.app/api/v2/public/programs` avec pagination (25 programmes par page). Les données sont extraites proprement depuis le JSON retourné — pas de parsing HTML, pas de regex fragile.
 
 ### Format de `data/destinations.json`
 
@@ -126,20 +113,23 @@ Le scraper fait aussi défiler la page (10 fois `End`) pour déclencher le charg
 {
   "scraped_at": "2026-04-02T10:00:00",
   "source": "https://epitech.globalcampus.app/programs/",
-  "count": 142,
+  "count": 143,
   "destinations": [
     {
-      "url": "https://epitech.globalcampus.app/destinations/42",
+      "url": "https://epitech.globalcampus.app/programs/7be45292-...",
       "scraped_at": "2026-04-02T10:01:23",
-      "university_name": "University of Melbourne",
-      "country": "Australie",
-      "city": "Melbourne",
-      "language": "Anglais",
-      "spots": "4",
-      "duration": "1 semestre",
-      "full_text": "...",
-      "tables": [["Critère", "Valeur"], ["Niveau", "Bachelor 3"]],
-      "images": ["https://..."]
+      "university_name": "Università degli Studi di Modena e Reggio Emilia",
+      "country": "Italy",
+      "language": "English",
+      "spots": "3",
+      "duration": "Academic Year",
+      "program_type": "Erasmus+",
+      "specializations": ["Artificial Intelligence"],
+      "gpa_requirement": "None",
+      "language_test_required": "No",
+      "dual_degree": "No",
+      "price_cents": 0,
+      "full_text": "..."
     }
   ]
 }
@@ -398,8 +388,7 @@ data: [DONE]
 |---|---|
 | `make help` | Affiche toutes les commandes disponibles |
 | `make build` | Build l'image Docker |
-| `make scrape` | Lance le scraper en headless |
-| `make scrape-visible` | Lance le scraper avec navigateur visible (debug) |
+| `make scrape` | Lance le scraper (API directe, pas de navigateur) |
 | `make web` | Lance l'interface web sur http://localhost:8080 |
 | `make clean` | Supprime `destinations.json` |
 | `make clean-all` | Supprime les données ET les images Docker |
@@ -450,11 +439,11 @@ ports:
 
 ### Le scraper ne trouve aucune destination
 
-Le site `epitech.globalcampus.app` est une SPA (Single Page Application) qui charge son contenu dynamiquement. Si le scraper retourne 0 destination, quelques pistes :
+Le scraper appelle directement l'API publique. Si le résultat est vide :
 
-1. Lance `make scrape-visible` pour voir ce que fait le navigateur en temps réel
-2. Le site a peut-être changé de structure — regarde dans le navigateur visible la liste des programmes et vérifie les URLs
-3. Regarde la sortie terminal : si des lignes `API interceptée :` apparaissent, les données ont bien été capturées
+1. Vérifie ta connexion internet
+2. L'API a peut-être changé d'URL — inspecte le trafic réseau sur `epitech.globalcampus.app/programs/` dans les DevTools du navigateur (onglet Network, filtre `api/v2/public/programs`)
+3. Regarde le message d'erreur dans le terminal pour diagnostiquer
 
 ---
 

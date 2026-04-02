@@ -12,13 +12,10 @@ help: ## Affiche cette aide
 	@echo ""
 
 build: ## Build l'image Docker
-	docker compose build
+	docker compose --profile scraper --profile web build
 
-scrape: ## Lance le scraper (headless, pas de login requis)
+scrape: ## Lance le scraper (appel API direct, pas de navigateur requis)
 	docker compose --profile scraper run --rm scraper
-
-scrape-visible: ## Lance le scraper avec navigateur visible (debug)
-	docker compose --profile scraper run --rm scraper python scraper.py --visible
 
 web: ## Lance l'interface web sur http://localhost:8080
 	@if [ ! -f .env ]; then \
