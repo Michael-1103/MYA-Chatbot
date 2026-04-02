@@ -1,11 +1,26 @@
-# MYA — Assistant Échanges Internationaux Epitech
+# MYA — Epitech International Exchange Assistant
 
-MYA est un outil en deux parties :
+> Chatbot RAG pour explorer les destinations d'échange international Epitech, propulsé par Claude, GPT-4 ou Mistral.
 
-1. **Un scraper** qui extrait toutes les destinations disponibles sur [epitech.globalcampus.app/programs/](https://epitech.globalcampus.app/programs/) (site public, aucun login requis).
-2. **Un chatbot web** qui répond à tes questions sur ces destinations en s'appuyant sur les données scrapées, complétées par la connaissance générale du modèle IA choisi.
+![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-24+-2496ED?logo=docker&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-Le tout tourne dans Docker, et tu peux choisir librement entre Claude (Anthropic), GPT (OpenAI) ou Mistral.
+---
+
+## Vue d'ensemble
+
+MYA combine un **scraper d'API** et un **chatbot web** pour permettre aux étudiants Epitech d'explorer les ~143 destinations partenaires disponibles sur [epitech.globalcampus.app](https://epitech.globalcampus.app/programs/).
+
+| Composant | Technologie |
+|---|---|
+| Scraper | Python + httpx, appel API paginé |
+| Backend | FastAPI + SSE streaming |
+| Frontend | HTML/CSS/JS vanilla, Markdown rendu |
+| RAG | Scoring par mots-clés, injection de contexte |
+| LLM | Claude (Anthropic), GPT-4o (OpenAI), Mistral |
+| Runtime | Docker Compose |
 
 ---
 
@@ -22,6 +37,7 @@ Le tout tourne dans Docker, et tu peux choisir librement entre Claude (Anthropic
 - [Référence API](#référence-api)
 - [Référence Makefile](#référence-makefile)
 - [Dépannage](#dépannage)
+- [Contribuer](#contribuer)
 
 ---
 
@@ -31,22 +47,17 @@ Le tout tourne dans Docker, et tu peux choisir librement entre Claude (Anthropic
 |---|---|---|
 | Docker | 24+ | `docker --version` |
 | Docker Compose | v2 | `docker compose version` |
-| Clé API | au moins une (Claude, OpenAI ou Mistral) | — |
-
-Le scraper appelle directement l'API publique du site — aucun navigateur, aucun affichage requis.
+| Clé API LLM | au moins une | Claude / OpenAI / Mistral |
 
 ---
 
 ## Installation
 
 ```bash
-git clone <url-du-repo>
+git clone https://github.com/Michael-1103/MYA-Chatbot.git
 cd MYA-Chatbot
 
-# Crée ton fichier de configuration
-cp .env.example .env
-
-# Build l'image Docker
+cp .env.example .env   # à éditer avec ta clé API
 make build
 ```
 
@@ -55,15 +66,9 @@ make build
 ## Démarrage rapide
 
 ```bash
-# 1. Scraper les destinations (headless, aucun login requis)
-make scrape
-
-# 2. Configurer la clé API dans .env
-#    (édite .env, renseigne ANTHROPIC_API_KEY ou autre)
-
-# 3. Lancer l'interface web
-make web
-# → Ouvre http://localhost:8080
+make scrape   # récupère les destinations depuis l'API Epitech
+make web      # lance le chatbot sur http://localhost:8080
+make stop     # stoppe les containers
 ```
 
 ---
@@ -74,40 +79,34 @@ make web
 make scrape
 ```
 
-Ce que ça fait :
+Le scraper appelle directement l'API REST publique d'Epitech GlobalCampus avec pagination automatique, sans navigateur ni authentification requise.
 
-1. Appelle l'API publique `epitech.campuscommunity.app/api/v2/public/programs` avec pagination
-2. Récupère les 143 destinations sur 6 pages
-3. Extrait les données structurées (pays, langue, places, spécialisations…) directement depuis le JSON
-4. Sauvegarde dans `data/destinations.json`
+**Déroulement :**
 
-### Ce que le scraper collecte
+1. Appel paginé à `epitech.campuscommunity.app/api/v2/public/programs` (25 programmes/page, 6 pages)
+2. Extraction structurée des métadonnées depuis le JSON
+3. Sauvegarde dans `data/destinations.json`
 
-Pour chaque destination, il tente d'extraire :
+### Données collectées
 
 | Champ | Description |
 |---|---|
 | `university_name` | Nom de l'université partenaire |
 | `country` | Pays |
-| `city` | Ville |
 | `language` | Langue d'enseignement |
 | `spots` | Nombre de places disponibles |
 | `duration` | Durée (`Semester` / `Academic Year`) |
 | `program_type` | Type (`Erasmus+`, `Fee-Paying`, `All Other Programs`) |
-| `specializations` | Liste de spécialisations |
+| `specializations` | Spécialisations disponibles |
 | `gpa_requirement` | GPA requis |
 | `language_test_required` | Test de langue obligatoire |
 | `dual_degree` | Double diplôme proposé |
-| `price_cents` | Prix en centimes (0 = gratuit) |
-| `full_text` | Description + itinéraire (jusqu'à 10 000 caractères) |
-| `url` | URL de la page source |
-| `scraped_at` | Horodatage du scraping |
+| `price_cents` | Frais en centimes (0 = gratuit) |
+| `full_text` | Description complète + itinéraire (≤ 10 000 caractères) |
+| `url` | URL de la fiche sur le site Epitech |
+| `scraped_at` | Horodatage |
 
-### Stratégie de scraping
-
-Le scraper appelle directement l'API REST publique `epitech.campuscommunity.app/api/v2/public/programs` avec pagination (25 programmes par page). Les données sont extraites proprement depuis le JSON retourné — pas de parsing HTML, pas de regex fragile.
-
-### Format de `data/destinations.json`
+### Format de sortie
 
 ```json
 {
@@ -141,7 +140,7 @@ Le scraper appelle directement l'API REST publique `epitech.campuscommunity.app/
 
 ### Configuration
 
-Édite le fichier `.env` avec ta clé API et le provider de ton choix :
+Édite `.env` avec le provider et la clé API de ton choix :
 
 ```bash
 # Provider : claude | openai | mistral
@@ -155,27 +154,23 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxx
 
 ```bash
 make web
+# → http://localhost:8080
 ```
 
-Le serveur démarre sur **http://localhost:8080**.
+### Interface
 
-### Utilisation de l'interface
+**Sidebar**
+- Provider et modèle actif
+- Nombre de destinations en mémoire
+- Bouton **Recharger** (prend en compte un nouveau scraping sans redémarrage)
+- Questions suggérées
 
-L'interface se compose de deux zones :
+**Chat**
+- Streaming token par token
+- Rendu Markdown complet (titres, tableaux, listes, code)
+- Bouton **Nouvelle conversation** pour réinitialiser l'historique
 
-**Sidebar gauche**
-- Nom du modèle actif
-- Nombre de destinations chargées en mémoire
-- Bouton **Recharger** pour prendre en compte un nouveau scraping sans redémarrer
-- **Suggestions** de questions prêtes à l'emploi
-
-**Zone de chat**
-- Tape ta question et appuie sur **Entrée** (ou Shift+Entrée pour un saut de ligne)
-- La réponse s'affiche en **streaming** token par token
-- Le markdown est rendu : titres, listes, tableaux, code, etc.
-- **Nouvelle conversation** remet l'historique à zéro
-
-### Exemples de questions
+**Exemples de questions**
 
 ```
 Quelles destinations anglophones sont disponibles ?
@@ -184,7 +179,6 @@ Quelle est la meilleure destination pour quelqu'un qui parle espagnol ?
 Combien de places y a-t-il à Tokyo ?
 Quels documents faut-il préparer pour un échange en Australie ?
 Quel est le coût de la vie à Montréal ?
-Explique-moi les démarches pour partir en échange au semestre 7
 ```
 
 ---
@@ -193,33 +187,33 @@ Explique-moi les démarches pour partir en échange au semestre 7
 
 ### Variables d'environnement
 
-| Variable | Valeur | Description |
-|---|---|---|
-| `PROVIDER` | `claude` / `openai` / `mistral` | Provider LLM à utiliser |
-| `MODEL` | voir tableau ci-dessous | Nom exact du modèle (optionnel) |
-| `ANTHROPIC_API_KEY` | `sk-ant-...` | Clé API Anthropic |
-| `OPENAI_API_KEY` | `sk-...` | Clé API OpenAI |
-| `MISTRAL_API_KEY` | `...` | Clé API Mistral |
-| `OPENAI_BASE_URL` | URL | Base URL custom (Ollama, proxy…) |
+| Variable | Description |
+|---|---|
+| `PROVIDER` | Provider LLM : `claude`, `openai` ou `mistral` |
+| `MODEL` | Nom du modèle (optionnel, sinon valeur par défaut) |
+| `ANTHROPIC_API_KEY` | Clé API Anthropic |
+| `OPENAI_API_KEY` | Clé API OpenAI |
+| `MISTRAL_API_KEY` | Clé API Mistral |
+| `OPENAI_BASE_URL` | Base URL custom (Ollama, proxy, etc.) |
 
-### Modèles disponibles par défaut
+### Modèles par défaut
 
-| Provider | Modèle par défaut | Alternatives |
+| Provider | Défaut | Alternatives |
 |---|---|---|
 | `claude` | `claude-sonnet-4-6` | `claude-opus-4-6`, `claude-haiku-4-5-20251001` |
 | `openai` | `gpt-4o` | `gpt-4o-mini`, `gpt-4-turbo` |
 | `mistral` | `mistral-small-latest` | `mistral-large-latest`, `open-mistral-7b` |
 
-### Exemples de configurations
+### Exemples de configuration
 
-**Claude Haiku (rapide et économique)**
+**Claude Haiku — rapide et économique**
 ```bash
 PROVIDER=claude
 MODEL=claude-haiku-4-5-20251001
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-**GPT-4o mini (OpenAI, économique)**
+**GPT-4o mini — OpenAI économique**
 ```bash
 PROVIDER=openai
 MODEL=gpt-4o-mini
@@ -230,11 +224,11 @@ OPENAI_API_KEY=sk-...
 ```bash
 PROVIDER=openai
 MODEL=llama3.2
-OPENAI_API_KEY=ollama         # valeur arbitraire, non vérifiée
+OPENAI_API_KEY=ollama
 OPENAI_BASE_URL=http://host.docker.internal:11434/v1
 ```
 
-> Pour qu'un modèle Ollama soit accessible depuis Docker, utilise `host.docker.internal` à la place de `localhost`.
+> `host.docker.internal` permet au container Docker d'atteindre `localhost` de la machine hôte.
 
 ---
 
@@ -242,26 +236,19 @@ OPENAI_BASE_URL=http://host.docker.internal:11434/v1
 
 ```
 MYA-Chatbot/
-│
-├── scraper.py              Scraper Playwright (login interactif + extraction)
-├── server.py               Backend FastAPI (API REST + SSE + frontend statique)
-│
+├── scraper.py              Scraper API (httpx, pagination automatique)
+├── server.py               Backend FastAPI (REST + SSE + frontend statique)
 ├── frontend/
-│   ├── index.html          Structure HTML de l'interface
-│   ├── style.css           Thème sombre, layout, composants
-│   └── app.js              Logique chat, streaming SSE, rendu Markdown
-│
-├── data/                   Volume Docker — données persistées
-│   ├── destinations.json   Résultat du scraping (créé par scraper.py)
-│   └── session_cookies.json  Session Epitech sauvegardée (créé par scraper.py)
-│
-├── Dockerfile              Image basée sur mcr.microsoft.com/playwright/python
-├── docker-compose.yml      Services : scraper (profil) + web (profil)
-├── requirements.txt        Dépendances Python
-├── .env.example            Template de configuration
-├── .env                    Ta configuration (à créer, non versionné)
-├── .gitignore              Exclut .env et data/
-└── Makefile                Commandes simplifiées
+│   ├── index.html
+│   ├── style.css
+│   └── app.js
+├── data/
+│   └── destinations.json   Généré par make scrape
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+├── .env.example
+└── Makefile
 ```
 
 ---
@@ -274,68 +261,56 @@ MYA-Chatbot/
 │                                                     │
 │  ┌──────────────┐         ┌──────────────────────┐  │
 │  │  scraper.py  │         │      server.py       │  │
-│  │              │         │  (FastAPI + uvicorn)  │  │
-│  │  Playwright  │  data/  │                      │  │
-│  │  Chromium    ├────────►│  RAG : scoring +     │  │
-│  │              │  JSON   │  injection contexte  │  │
-│  │  Headless    │         │                      │  │
-│  │  /programs/  │         │  SSE streaming       │  │
+│  │              │         │  (FastAPI + uvicorn) │  │
+│  │  httpx       │  data/  │                      │  │
+│  │  API REST    ├────────►│  RAG scoring +       │  │
+│  │  paginée     │  JSON   │  injection contexte  │  │
+│  │              │         │  SSE streaming       │  │
 │  └──────────────┘         └──────────┬───────────┘  │
-│                                      │ :8080         │
+│                                      │ :8080        │
 └──────────────────────────────────────┼──────────────┘
                                        │
                          ┌─────────────▼──────────────┐
-                         │      Navigateur             │
-                         │   frontend/ (HTML/CSS/JS)   │
-                         │   marked.js (Markdown)      │
+                         │  Navigateur (HTML/CSS/JS)  │
+                         │  marked.js — Markdown      │
                          └─────────────┬──────────────┘
                                        │ HTTPS
                          ┌─────────────▼──────────────┐
-                         │       API LLM              │
-                         │  Anthropic / OpenAI /      │
-                         │  Mistral                   │
+                         │   API LLM                  │
+                         │   Anthropic / OpenAI /     │
+                         │   Mistral                  │
                          └────────────────────────────┘
 ```
 
-### Fonctionnement du RAG (Retrieval-Augmented Generation)
+### RAG — Retrieval-Augmented Generation
 
-Quand tu envoies un message, le serveur ne passe pas toutes les destinations au modèle d'un coup. Il sélectionne les plus pertinentes via un **scoring par mots-clés** :
+À chaque message, le serveur sélectionne les destinations les plus pertinentes avant d'appeler le LLM :
 
-1. Les mots de ta question sont extraits (longueur > 2 caractères)
-2. Chaque destination reçoit un score : **×3** si le mot apparaît dans le nom de l'université, la ville ou le pays ; **×1** sinon
-3. Les destinations sont triées par score décroissant
-4. Les 15 meilleures sont sélectionnées, dans la limite de 80 000 caractères de contexte
-5. Ce contexte est injecté dans le message utilisateur avant envoi au modèle
-
-Le modèle reçoit ainsi les données les plus pertinentes pour répondre, sans dépasser les limites de contexte.
+1. Extraction des mots-clés de la question (longueur > 2 caractères)
+2. Scoring : **×3** si le mot apparaît dans le nom de l'université ou le pays, **×1** ailleurs
+3. Tri par score décroissant — top 15 sélectionnés (limite : 80 000 caractères)
+4. Injection du contexte dans le message avant envoi au modèle
 
 ### Streaming SSE
 
-Les réponses du modèle sont transmises en [Server-Sent Events](https://developer.mozilla.org/fr/docs/Web/API/Server-sent_events). Chaque token est envoyé dès qu'il est généré :
+Les tokens sont transmis en temps réel via [Server-Sent Events](https://developer.mozilla.org/fr/docs/Web/API/Server-sent_events) :
 
 ```
 data: {"token": "Voici"}
-data: {"token": " les"}
-data: {"token": " destinations"}
+data: {"token": " les destinations"}
 ...
 data: [DONE]
 ```
-
-Le frontend lit ce flux et met à jour l'interface en temps réel, token par token.
 
 ---
 
 ## Référence API
 
-Le serveur expose trois endpoints REST :
-
 ### `GET /api/stats`
-
-Retourne l'état actuel du serveur.
 
 ```json
 {
-  "destinations_count": 142,
+  "destinations_count": 143,
   "provider": "claude",
   "model": "claude-sonnet-4-6",
   "data_available": true
@@ -344,17 +319,15 @@ Retourne l'état actuel du serveur.
 
 ### `POST /api/reload`
 
-Recharge `data/destinations.json` en mémoire sans redémarrer le serveur. Utile après un nouveau scraping.
+Recharge `data/destinations.json` en mémoire sans redémarrer le serveur.
 
 ```json
-{ "destinations_count": 156 }
+{ "destinations_count": 143 }
 ```
 
 ### `POST /api/chat`
 
-Envoie un historique de conversation et reçoit la réponse en streaming SSE.
-
-**Corps de la requête :**
+**Corps :**
 ```json
 {
   "messages": [
@@ -365,16 +338,13 @@ Envoie un historique de conversation et reçoit la réponse en streaming SSE.
 }
 ```
 
-**Réponse :** `text/event-stream`
+**Réponse** — `text/event-stream` :
 ```
-data: {"token": "Au"}
-data: {"token": " Japon"}
-data: {"token": ","}
+data: {"token": "Au Japon"}
 ...
 data: [DONE]
 ```
 
-En cas d'erreur :
 ```
 data: {"error": "Invalid API key"}
 data: [DONE]
@@ -386,79 +356,66 @@ data: [DONE]
 
 | Commande | Description |
 |---|---|
-| `make help` | Affiche toutes les commandes disponibles |
+| `make help` | Liste toutes les commandes disponibles |
 | `make build` | Build l'image Docker |
-| `make scrape` | Lance le scraper (API directe, pas de navigateur) |
-| `make web` | Lance l'interface web sur http://localhost:8080 |
-| `make clean` | Supprime `destinations.json` |
-| `make clean-all` | Supprime les données ET les images Docker |
+| `make scrape` | Lance le scraper |
+| `make web` | Lance le chatbot sur http://localhost:8080 |
+| `make stop` | Stoppe tous les containers |
+| `make clean` | Supprime `data/destinations.json` |
+| `make clean-all` | Supprime les données et les images Docker |
 
 ---
 
 ## Dépannage
 
-### `make web` : "Aucune donnée — lance le scraper"
+### "Aucune donnée — lance le scraper"
 
-Le fichier `data/destinations.json` n'existe pas encore. Lance d'abord le scraper :
-
-```bash
-make scrape
-```
-
-Si tu viens de scraper et que le chatbot ne voit toujours rien, clique sur **Recharger** dans la sidebar de l'interface web, ou relance `make web`.
-
----
+`data/destinations.json` n'existe pas. Lance `make scrape` en premier.  
+Si le fichier existe mais que le chatbot ne le voit pas, clique sur **Recharger** dans la sidebar.
 
 ### Erreur `Invalid API key`
 
-Vérifie que ton `.env` contient bien la bonne clé pour le provider configuré :
-
-```bash
-# Si PROVIDER=claude
-ANTHROPIC_API_KEY=sk-ant-...   # doit commencer par sk-ant-
-
-# Si PROVIDER=openai
-OPENAI_API_KEY=sk-...          # doit commencer par sk-
-
-# Si PROVIDER=mistral
-MISTRAL_API_KEY=...
-```
-
----
+Vérifie que la clé dans `.env` correspond au `PROVIDER` configuré et qu'elle est valide.
 
 ### Port 8080 déjà utilisé
 
-Change le port dans `docker-compose.yml` :
-
+Dans `docker-compose.yml`, change le port exposé :
 ```yaml
 ports:
-  - "3000:8080"   # accessible sur http://localhost:3000
+  - "3000:8080"
 ```
 
----
-
-### Le scraper ne trouve aucune destination
-
-Le scraper appelle directement l'API publique. Si le résultat est vide :
+### Le scraper retourne 0 destination
 
 1. Vérifie ta connexion internet
-2. L'API a peut-être changé d'URL — inspecte le trafic réseau sur `epitech.globalcampus.app/programs/` dans les DevTools du navigateur (onglet Network, filtre `api/v2/public/programs`)
-3. Regarde le message d'erreur dans le terminal pour diagnostiquer
+2. L'URL de l'API a peut-être changé — inspecte le trafic réseau sur `epitech.globalcampus.app/programs/` (DevTools → Network → filtre `api/v2/public/programs`)
+3. Lis le message d'erreur dans le terminal
 
----
-
-### Utiliser un modèle local (Ollama)
+### Modèle local avec Ollama
 
 ```bash
-# Lance Ollama sur la machine hôte
-ollama serve
-ollama pull llama3.2
+ollama serve && ollama pull llama3.2
+```
 
-# Dans .env
+```bash
+# .env
 PROVIDER=openai
 MODEL=llama3.2
 OPENAI_API_KEY=ollama
 OPENAI_BASE_URL=http://host.docker.internal:11434/v1
 ```
 
-`host.docker.internal` est le hostname qui permet au container Docker d'atteindre `localhost` de la machine hôte.
+---
+
+## Contribuer
+
+Les contributions sont les bienvenues.
+
+**Workflow :**
+
+1. Fork le dépôt
+2. Crée une branche (`git checkout -b feature/ma-feature`)
+3. Commit avec un message conventionnel (`feat:`, `fix:`, `docs:`…)
+4. Push et ouvre une Pull Request
+
+**Signaler un bug :** ouvre une [issue](../../issues) avec les étapes de reproduction et ton environnement (OS, version Docker).
