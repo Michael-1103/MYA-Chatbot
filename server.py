@@ -10,7 +10,6 @@ MYA — Serveur web FastAPI
 import json
 import os
 import re
-import asyncio
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -153,29 +152,14 @@ async def stream_openai(messages: list[dict]) -> AsyncGenerator[str, None]:
 
 
 async def stream_mistral(messages: list[dict]) -> AsyncGenerator[str, None]:
-    from mistralai import Mistral
+    from mistralai.client import Mistral
     client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
     full_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
 
-    # mistralai SDK est synchrone → on le run dans un thread
-    loop = asyncio.get_event_loop()
-    queue: asyncio.Queue = asyncio.Queue()
-
-    def _sync_stream():
-        try:
-            for chunk in client.chat.stream(model=MODEL, messages=full_messages, max_tokens=2048):
-                delta = chunk.data.choices[0].delta.content
-                if delta:
-                    loop.call_soon_threadsafe(queue.put_nowait, delta)
-        finally:
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-
-    loop.run_in_executor(None, _sync_stream)
-    while True:
-        token = await queue.get()
-        if token is None:
-            break
-        yield token
+    async for chunk in client.chat.stream_async(model=MODEL, messages=full_messages, max_tokens=2048):
+        delta = chunk.data.choices[0].delta.content
+        if delta:
+            yield delta
 
 
 async def stream_llm(messages: list[dict]) -> AsyncGenerator[str, None]:
