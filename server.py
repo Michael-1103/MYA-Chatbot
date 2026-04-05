@@ -235,6 +235,11 @@ class ChatRequest(BaseModel):
     messages: list[dict]   # [{"role": "user"|"assistant", "content": "..."}]
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.get("/api/stats")
 def stats():
     return {
