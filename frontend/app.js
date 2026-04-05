@@ -15,6 +15,9 @@ const reloadBtn         = document.getElementById("reloadBtn");
 const modelBadge        = document.getElementById("modelBadge");
 const dataStatus        = document.getElementById("dataStatus");
 const dataText          = document.getElementById("dataText");
+const scrapeBtn         = document.getElementById("scrapeBtn");
+const scrapeStatus      = document.getElementById("scrapeStatus");
+const scrapeText        = document.getElementById("scrapeText");
 const menuToggle        = document.getElementById("menuToggle");
 const sidebar           = document.querySelector(".sidebar");
 const overlay           = document.getElementById("sidebarOverlay");
@@ -26,6 +29,7 @@ const welcomeScreen     = document.getElementById("welcomeScreen");
   setupInputListeners();
   setupMobileMenu();
   setupHints();
+  setupScrape();
 })();
 
 // ── Stats API ─────────────────────────────────────────────────────────────────
@@ -65,6 +69,57 @@ reloadBtn.addEventListener("click", async () => {
     reloadBtn.disabled = false;
   }
 });
+
+// ── Scraping ──────────────────────────────────────────────────────────────────
+function setScrapeStatus(type, text) {
+  scrapeStatus.querySelector(".dot").className = `dot dot-${type}`;
+  scrapeText.textContent = text;
+}
+
+function setupScrape() {
+  scrapeBtn.addEventListener("click", async () => {
+    scrapeBtn.disabled = true;
+    setScrapeStatus("loading", "Démarrage…");
+
+    try {
+      const res = await fetch(`${API}/api/scrape`, { method: "POST" });
+      const data = await res.json();
+      if (data.status === "already_running") {
+        setScrapeStatus("loading", "Déjà en cours…");
+        pollScrapeStatus();
+        return;
+      }
+      setScrapeStatus("loading", "Scraping en cours…");
+      pollScrapeStatus();
+    } catch {
+      setScrapeStatus("warn", "Erreur au lancement");
+      scrapeBtn.disabled = false;
+    }
+  });
+}
+
+function pollScrapeStatus() {
+  const interval = setInterval(async () => {
+    try {
+      const res = await fetch(`${API}/api/scrape/status`);
+      const data = await res.json();
+      if (!data.running) {
+        clearInterval(interval);
+        scrapeBtn.disabled = false;
+        if (data.error) {
+          setScrapeStatus("warn", `Erreur : ${data.error.slice(0, 60)}`);
+        } else {
+          setScrapeStatus("ok", `${data.last_count} destinations`);
+          setDataStatus("ok", `${data.last_count} destinations`);
+        }
+      }
+    } catch {
+      clearInterval(interval);
+      setScrapeStatus("warn", "Connexion perdue");
+      scrapeBtn.disabled = false;
+    }
+  }, 2000);
+}
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
 async function sendMessage(userText) {

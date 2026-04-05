@@ -7,9 +7,11 @@ MYA — Serveur web FastAPI
 - /api/reload     POST → recharge les destinations en mémoire
 """
 
+import asyncio
 import json
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -120,6 +122,39 @@ def build_context(query: str) -> str:
     return "\n\n".join(parts)
 
 
+# ── Scraper intégré ───────────────────────────────────────────────────────────
+
+_scrape_state: dict = {
+    "running": False,
+    "last_run": None,
+    "last_count": 0,
+    "error": None,
+}
+
+
+async def _run_scraper():
+    global _scrape_state, _destinations
+    _scrape_state["running"] = True
+    _scrape_state["error"] = None
+    try:
+        from scraper import fetch_all_programs
+        destinations = await fetch_all_programs()
+        output = {
+            "scraped_at": datetime.now(timezone.utc).isoformat(),
+            "source": "https://epitech.globalcampus.app/programs/",
+            "count": len(destinations),
+            "destinations": destinations,
+        }
+        DESTINATIONS_FILE.write_text(json.dumps(output, ensure_ascii=False, indent=2))
+        _destinations = destinations
+        _scrape_state["last_count"] = len(destinations)
+        _scrape_state["last_run"] = datetime.now(timezone.utc).isoformat()
+    except Exception as e:
+        _scrape_state["error"] = str(e)
+    finally:
+        _scrape_state["running"] = False
+
+
 # ── Clients LLM ───────────────────────────────────────────────────────────────
 
 async def stream_claude(messages: list[dict]) -> AsyncGenerator[str, None]:
@@ -202,6 +237,26 @@ def stats():
         "provider": PROVIDER,
         "model": MODEL,
         "data_available": DESTINATIONS_FILE.exists(),
+        "scrape_running": _scrape_state["running"],
+        "scrape_last_run": _scrape_state["last_run"],
+    }
+
+
+@app.post("/api/scrape")
+async def trigger_scrape():
+    if _scrape_state["running"]:
+        return {"status": "already_running"}
+    asyncio.create_task(_run_scraper())
+    return {"status": "started"}
+
+
+@app.get("/api/scrape/status")
+def scrape_status():
+    return {
+        "running": _scrape_state["running"],
+        "last_run": _scrape_state["last_run"],
+        "last_count": _scrape_state["last_count"],
+        "error": _scrape_state["error"],
     }
 
 

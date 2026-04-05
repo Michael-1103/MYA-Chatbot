@@ -159,6 +159,25 @@ body { display: flex; height: 100vh; }
 }
 .reload-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+.scrape-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--border2);
+  border-radius: 7px;
+  color: var(--text2);
+  font-size: 11.5px;
+  font-family: var(--font);
+  cursor: pointer;
+  padding: 5px 10px;
+  transition: all 0.15s;
+  margin-top: 4px;
+}
+.scrape-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.scrape-btn:disabled { opacity: 0.45; cursor: default; }
+
 .sidebar-hints { padding: 10px 6px 0; display: flex; flex-direction: column; gap: 5px; }
 .hint-btn {
   text-align: left;
