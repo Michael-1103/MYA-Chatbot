@@ -4,7 +4,6 @@ services:
     container_name: mya
     restart: unless-stopped
     command: uvicorn server:app --host 0.0.0.0 --port 8080
-    env_file: .env
     ports:
       - "8080:8080"
     volumes:
