@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncGenerator
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
@@ -214,14 +216,17 @@ async def stream_llm(messages: list[dict]) -> AsyncGenerator[str, None]:
 
 # ── App FastAPI ───────────────────────────────────────────────────────────────
 
-app = FastAPI(title="MYA")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    load_destinations()
+    yield
+
+
+app = FastAPI(title="MYA", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
-
-# Charge les données au démarrage
-load_destinations()
 
 
 # ── Routes API ────────────────────────────────────────────────────────────────
