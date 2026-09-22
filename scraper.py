@@ -1,8 +1,9 @@
 """
-Scraper pour epitech.globalcampus.app/programs/
+Scraper pour mya.epitech.eu
 ─────────────────────────────────────────────────
-Appelle directement l'API publique (pas de login, pas de navigateur requis)
-et extrait les 143 destinations avec leurs métadonnées structurées.
+Appelle directement l'API publique de MYA (pas de login, pas de navigateur requis)
+et extrait toutes les destinations partenaires avec leurs métadonnées structurées
+et le détail complet de chaque fiche (overview, administratif, logement, cours, coût...).
 
 Usage:
     python scraper.py
@@ -10,8 +11,10 @@ Usage:
 
 import asyncio
 import json
+import re
+from html.parser import HTMLParser
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 import httpx
 from rich.console import Console
@@ -23,10 +26,9 @@ DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 OUTPUT_FILE = DATA_DIR / "destinations.json"
 
-API_BASE = "https://epitech.campuscommunity.app/api/v2/public/programs"
-SITE_BASE = "https://epitech.globalcampus.app/programs"
-TYPE_IDS = "16,17,3"
-PAGE_SIZE = 25
+API_BASE = "https://mya.epitech.eu/api"
+SITE_BASE = "https://mya.epitech.eu"
+CONCURRENCY = 8
 
 HEADERS = {
     "User-Agent": (
@@ -34,150 +36,106 @@ HEADERS = {
         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     ),
     "Accept": "application/json",
-    "Origin": "https://epitech.globalcampus.app",
-    "Referer": "https://epitech.globalcampus.app/programs/",
+    "Origin": SITE_BASE,
+    "Referer": f"{SITE_BASE}/programs",
 }
 
 
-# ── Extraction du texte riche (format TipTap/ProseMirror) ─────────────────────
+# ── Conversion HTML (Quill) → texte brut ───────────────────────────────────────
 
-def extract_text(node) -> str:
-    """Extrait récursivement le texte brut d'un nœud TipTap."""
-    if node is None:
+_BLOCK_TAGS = {"p", "div", "li", "ul", "ol", "blockquote", "h1", "h2", "h3", "h4"}
+
+
+class _HTMLToText(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.chunks: list[str] = []
+        self._href = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "br":
+            self.chunks.append("\n")
+        elif tag == "li":
+            self.chunks.append("\n- ")
+        elif tag in _BLOCK_TAGS:
+            self.chunks.append("\n")
+        elif tag == "a":
+            self._href = dict(attrs).get("href")
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self._href:
+            self.chunks.append(f" ({self._href})")
+            self._href = None
+        elif tag in _BLOCK_TAGS:
+            self.chunks.append("\n")
+
+    def handle_data(self, data):
+        self.chunks.append(data)
+
+    def get_text(self) -> str:
+        text = "".join(self.chunks)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n[ \t]*\n+", "\n\n", text)
+        return text.strip()
+
+
+def html_to_text(field) -> str:
+    if not field or not isinstance(field, str):
         return ""
-    if isinstance(node, str):
-        return node
-    if isinstance(node, dict):
-        if node.get("type") == "text":
-            return node.get("text", "")
-        if node.get("type") == "hardBreak":
-            return "\n"
-        parts = [extract_text(child) for child in node.get("content", [])]
-        sep = "\n" if node.get("type") in ("paragraph", "bulletList", "orderedList", "listItem", "blockquote") else ""
-        return sep.join(parts)
-    if isinstance(node, list):
-        return "\n".join(extract_text(item) for item in node)
-    return ""
+    parser = _HTMLToText()
+    parser.feed(field)
+    return parser.get_text()
 
 
-def richtext_to_str(field) -> str:
-    """Convertit un champ rich-text (dict JSON ou string JSON) en texte brut."""
-    if not field:
-        return ""
-    if isinstance(field, str):
-        try:
-            field = json.loads(field)
-        except Exception:
-            return field.strip()
-    return extract_text(field).strip()
+# ── Extraction structurée d'une université ─────────────────────────────────────
 
-
-# ── Extraction structurée d'un programme ──────────────────────────────────────
-
-def parse_program(raw: dict) -> dict:
-    """Transforme un objet programme brut en dict propre pour le chatbot."""
-
-    # Pays depuis locations
-    locations = raw.get("locations") or []
-    country = ", ".join(loc["label"] for loc in locations if loc.get("label"))
-
-    # Langue, places, spécialisations, etc. depuis les tags
-    language = spots = gpa = lang_test = dual_degree = None
-    specializations = []
-    for tag in raw.get("tags") or []:
-        parent_name = (tag.get("parent") or {}).get("name", "")
-        tag_name = tag.get("name", "")
-        if parent_name == "Language of instruction":
-            language = tag_name
-        elif parent_name == "Available Spots":
-            spots = tag_name
-        elif parent_name == "GPA Requirement":
-            gpa = tag_name
-        elif parent_name == "Language Test or Tepitech >750 Required":
-            lang_test = tag_name
-        elif parent_name == "Dual degree/certificate proposed":
-            dual_degree = tag_name
-        elif parent_name == "Specializations":
-            specializations.append(tag_name)
-
-    # Type de programme (Erasmus, Fee-Paying, All Other)
-    type_id = raw.get("typeId")
-    program_type = {16: "Erasmus+", 17: "Fee-Paying", 3: "All Other Programs"}.get(type_id, str(type_id))
-
-    # Durée — termName peut être top-level ou dans itinerary selon la réponse API
-    itinerary = raw.get("itinerary") or {}
-    term = raw.get("termName") or itinerary.get("termName") or []
-    duration = ", ".join(term) if isinstance(term, list) else str(term)
-
-    # Descriptions textuelles
-    description = richtext_to_str(raw.get("description"))
-
-    # Les champs rich-text peuvent être top-level ou dans itinerary
-    itinerary_text_parts = []
+def parse_university(raw: dict) -> dict:
+    text_parts = []
     for key, label in [
-        ("itinerary", "Itinéraire"),
-        ("costFunding", "Coût / financement"),
-        ("eligibility", "Conditions d'éligibilité"),
-        ("housingType", "Logement"),
-        ("whatsIncluded", "Ce qui est inclus"),
-        ("languageOfInstruction", "Langue d'enseignement"),
+        ("overview", "Présentation"),
+        ("administrative", "Démarches administratives (dossier, visa, assurance)"),
+        ("accomodation", "Logement"),
+        ("courses", "Cours et calendrier académique"),
+        ("cost", "Coût de la vie / budget"),
     ]:
-        val = raw.get(key) or itinerary.get(key)
-        if val and isinstance(val, dict) and val.get("type") == "doc":
-            text = richtext_to_str(val)
-            if text:
-                itinerary_text_parts.append(f"### {label}\n{text}")
-    itinerary_text = "\n\n".join(itinerary_text_parts)
-
-    full_text = "\n\n".join(filter(None, [description, itinerary_text]))
+        text = html_to_text(raw.get(key))
+        if text:
+            text_parts.append(f"### {label}\n{text}")
+    full_text = "\n\n".join(text_parts)
 
     dest = {
-        "url": f"{SITE_BASE}/{raw['id']}",
-        "scraped_at": datetime.utcnow().isoformat(),
-        "university_name": raw.get("name", ""),
-        "country": country,
-        "language": language,
-        "spots": spots,
-        "duration": duration,
-        "program_type": program_type,
-        "specializations": specializations,
-        "gpa_requirement": gpa,
-        "language_test_required": lang_test,
-        "dual_degree": dual_degree,
-        "price_cents": raw.get("priceCents"),
-        "start_date": raw.get("startDate"),
-        "end_date": raw.get("endDate"),
-        "image_url": raw.get("imageUrl"),
-        "full_text": full_text[:10000],
+        "id": raw.get("id"),
+        "url": f"{SITE_BASE}/university/{raw.get('id')}",
+        "scraped_at": datetime.now(timezone.utc).isoformat(),
+        "university_name": (raw.get("name") or "").strip(),
+        "country": raw.get("country"),
+        "language": raw.get("language"),
+        "diploma": raw.get("diploma"),
+        "spots": raw.get("spots"),
+        "gpa_requirement": raw.get("gpa"),
+        "extra_charge_cents": raw.get("extracharge"),
+        "erasmus": raw.get("erasmus"),
+        "semester": raw.get("semester"),
+        "specializations": raw.get("specializations") or [],
+        "display": raw.get("display"),
+        "updated_at": raw.get("updatedAt"),
+        "images": [img for img in (raw.get("image1"), raw.get("image2"), raw.get("image3")) if img],
+        "full_text": full_text,
     }
-    # Retire les champs None pour garder le JSON propre
     return {k: v for k, v in dest.items() if v is not None and v != "" and v != []}
 
 
-# ── Appels API paginés ────────────────────────────────────────────────────────
+# ── Appels API ──────────────────────────────────────────────────────────────────
 
-async def fetch_all_programs() -> list[dict]:
-    destinations = []
-
+async def fetch_all_universities() -> list[dict]:
     async with httpx.AsyncClient(headers=HEADERS, timeout=30, follow_redirects=True) as client:
-        # 1re requête pour connaître le nombre de pages
-        params = {"typeId": TYPE_IDS, "term": "", "page": 1, "limit": PAGE_SIZE}
-        resp = await client.get(API_BASE, params=params)
+        resp = await client.get(f"{API_BASE}/universities")
         resp.raise_for_status()
-        body = resp.json()
+        listing = resp.json()
+        console.print(f"[cyan]{len(listing)} universités trouvées, récupération du détail de chacune...[/cyan]")
 
-        # L'API peut encapsuler dans {"data": {...}} ou répondre à plat
-        if "data" in body and isinstance(body["data"], dict):
-            root = body["data"]
-        else:
-            root = body
-
-        meta = root.get("meta", {})
-        total_pages = meta.get("totalPages", 1)
-        total_items = meta.get("totalItems", "?")
-        console.print(f"[cyan]{total_items} programmes trouvés sur {total_pages} pages[/cyan]")
-
-        programs_page1 = root.get("programs", [])
+        destinations = [None] * len(listing)
+        semaphore = asyncio.Semaphore(CONCURRENCY)
 
         with Progress(
             SpinnerColumn(),
@@ -186,42 +144,43 @@ async def fetch_all_programs() -> list[dict]:
             MofNCompleteColumn(),
             console=console,
         ) as progress:
-            task = progress.add_task("Récupération des programmes...", total=total_pages)
+            task = progress.add_task("Récupération des fiches détaillées...", total=len(listing))
 
-            # Page 1 déjà chargée
-            for raw in programs_page1:
-                destinations.append(parse_program(raw))
-            progress.advance(task)
+            async def fetch_one(index: int, uid: int):
+                async with semaphore:
+                    try:
+                        r = await client.get(f"{API_BASE}/universities/{uid}")
+                        r.raise_for_status()
+                        destinations[index] = parse_university(r.json())
+                    except Exception as exc:
+                        console.print(f"[red]Échec pour l'université {uid}: {exc}[/red]")
+                        destinations[index] = parse_university({"id": uid, **{
+                            k: v for k, v in listing[index].items()
+                        }})
+                    progress.advance(task)
 
-            # Pages suivantes
-            for page in range(2, total_pages + 1):
-                params = {"typeId": TYPE_IDS, "term": "", "page": page, "limit": PAGE_SIZE}
-                resp = await client.get(API_BASE, params=params)
-                resp.raise_for_status()
-                body = resp.json()
-                root = body["data"] if "data" in body and isinstance(body["data"], dict) else body
-                for raw in root.get("programs", []):
-                    destinations.append(parse_program(raw))
-                progress.advance(task)
+            await asyncio.gather(*(
+                fetch_one(i, item["id"]) for i, item in enumerate(listing)
+            ))
 
-    return destinations
+    return [d for d in destinations if d]
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 async def main():
     console.print(Panel.fit(
-        "[bold cyan]MYA-Chatbot — Epitech GlobalCampus[/bold cyan]\n"
+        "[bold cyan]MYA-Chatbot — mya.epitech.eu[/bold cyan]\n"
         "Scraper de destinations internationales",
         border_style="cyan"
     ))
 
     console.print("\n[bold green]Démarrage du scraping via API...[/bold green]")
-    destinations = await fetch_all_programs()
+    destinations = await fetch_all_universities()
 
     output = {
-        "scraped_at": datetime.utcnow().isoformat(),
-        "source": "https://epitech.globalcampus.app/programs/",
+        "scraped_at": datetime.now(timezone.utc).isoformat(),
+        "source": f"{SITE_BASE}/programs",
         "count": len(destinations),
         "destinations": destinations,
     }
